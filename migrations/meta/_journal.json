@@ -1,0 +1,20 @@
+{
+  "version": "5",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1746983969921,
+      "tag": "0000_sad_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1746983969921,
+      "tag": "0001_password_reset_requests",
+      "breakpoints": true
+    }
+  ]
+}

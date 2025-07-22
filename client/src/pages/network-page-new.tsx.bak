@@ -1,0 +1,763 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import Layout from "@/components/layout";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { User } from "@shared/schema";
+import { Search, UserPlus, Check, X, Mail } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
+
+export default function NetworkPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  
+  // Custom card styling
+  const cardStyle = "rounded-lg shadow-sm hover:shadow-md transition-shadow";
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("connections");
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [connectionRequestDialogOpen, setConnectionRequestDialogOpen] = useState(false);
+  const [connectionMessage, setConnectionMessage] = useState("");
+  
+  // Sort and filter states
+  const [sortBy, setSortBy] = useState<"recent" | "name">("recent");
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  
+  // Professional categories for filtering
+  const professionalCategories = ["Engineering", "Design", "Management", "Marketing", "Finance", "Healthcare", "Education", "Technology"];
+
+  interface Connection {
+    connection: {
+      id: number;
+      requesterId: number;
+      receiverId: number;
+      status: string;
+      createdAt: string;
+    };
+    user: User;
+  }
+
+  // Fetch connections
+  const { data: connections, isLoading: loadingConnections } = useQuery<Connection[]>({
+    queryKey: ["/api/connections"],
+    enabled: !!user
+  });
+  
+  // Fetch connection requests
+  const { data: pendingConnections, isLoading: loadingPending } = useQuery<Connection[]>({
+    queryKey: ["/api/connections/pending"],
+    enabled: !!user
+  });
+
+  // Fetch users for suggestions
+  const { data: allUsers, isLoading: loadingUsers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    enabled: !!user
+  });
+
+  // Send connection request mutation
+  const sendConnectionMutation = useMutation({
+    mutationFn: async (receiverId: number) => {
+      const res = await apiRequest("POST", "/api/connections", {
+        receiverId
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
+      toast({
+        title: "Connection request sent",
+        description: "Your connection request has been sent successfully."
+      });
+      setConnectionRequestDialogOpen(false);
+      setConnectionMessage("");
+      setSelectedUser(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to send request",
+        description: error instanceof Error ? error.message : "Failed to send connection request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Accept connection request mutation
+  const acceptConnectionMutation = useMutation({
+    mutationFn: async (connectionId: number) => {
+      const res = await apiRequest("PATCH", `/api/connections/${connectionId}`, {
+        status: "accepted"
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/pending"] });
+      toast({
+        title: "Connection accepted",
+        description: "You've successfully accepted the connection request."
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to accept connection",
+        description: error instanceof Error ? error.message : "Failed to accept connection request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reject connection request mutation
+  const rejectConnectionMutation = useMutation({
+    mutationFn: async (connectionId: number) => {
+      const res = await apiRequest("PATCH", `/api/connections/${connectionId}`, {
+        status: "rejected"
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/pending"] });
+      toast({
+        title: "Connection rejected",
+        description: "You've rejected the connection request."
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to reject connection",
+        description: error instanceof Error ? error.message : "Failed to reject connection request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Filter users based on search term and exclude those already connected
+  const connectedUserIds = new Set(connections?.map(conn => conn.user.id) || []);
+  const pendingUserIds = new Set(pendingConnections?.map(conn => conn.user.id) || []);
+  
+  const filteredUsers = allUsers?.filter(u => 
+    // Search term filter
+    (u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     u.title?.toLowerCase().includes(searchTerm.toLowerCase())) && 
+    // Exclude current user
+    u.id !== user?.id &&
+    // Exclude already connected users
+    !connectedUserIds.has(u.id) &&
+    // Exclude users with pending connection requests
+    !pendingUserIds.has(u.id)
+  ) || [];
+
+  // Get initials for avatar fallback
+  const getInitials = (name: string | null | undefined, username: string): string => {
+    if (name && name.trim()) {
+      return name.substring(0, 2).toUpperCase();
+    }
+    return username.substring(0, 2).toUpperCase();
+  };
+
+  // Function to determine the professional category of a user based on their title
+  const getUserCategory = (user: User): string => {
+    const title = (user.title || '').toLowerCase();
+    if (title.includes('engineer') || title.includes('developer')) return 'Engineering';
+    if (title.includes('design') || title.includes('ux')) return 'Design';
+    if (title.includes('manager') || title.includes('head') || title.includes('lead')) return 'Management';
+    if (title.includes('market')) return 'Marketing';
+    if (title.includes('finance') || title.includes('account')) return 'Finance';
+    if (title.includes('health') || title.includes('doctor') || title.includes('nurs')) return 'Healthcare';
+    if (title.includes('teach') || title.includes('professor') || title.includes('tutor')) return 'Education';
+    if (title.includes('tech') || title.includes('it') || title.includes('data')) return 'Technology';
+    if (title.includes('analyst')) return 'Business Analysis';
+    return 'Other';
+  };
+  
+  // Get sorted and filtered connections
+  const getSortedAndFilteredConnections = (): Connection[] => {
+    if (!connections || !Array.isArray(connections)) return [];
+    
+    let filteredConnections = [...connections];
+    
+    // Apply category filter if set
+    if (filterCategory) {
+      filteredConnections = filteredConnections.filter(conn => getUserCategory(conn.user) === filterCategory);
+    }
+    
+    // Apply sorting
+    if (sortBy === "name") {
+      filteredConnections.sort((a, b) => {
+        const nameA = a.user.name || a.user.username || '';
+        const nameB = b.user.name || b.user.username || '';
+        return nameA.localeCompare(nameB);
+      });
+    } else {
+      // Sort by connection date (most recent first)
+      filteredConnections.sort((a, b) => {
+        const dateA = new Date(a.connection.createdAt).getTime();
+        const dateB = new Date(b.connection.createdAt).getTime();
+        return dateB - dateA;
+      });
+    }
+    
+    return filteredConnections;
+  };
+
+  // Function to open connection request dialog
+  const openConnectionDialog = (selectedUser: User) => {
+    setSelectedUser(selectedUser);
+    setConnectionRequestDialogOpen(true);
+    
+    // Generate AI suggested message
+    const suggestedMessages = [
+      `Hi ${selectedUser.name || selectedUser.username}, I'd like to connect with you on Harmony.ai.`,
+      `Hello ${selectedUser.name || selectedUser.username}, I noticed your profile and would love to add you to my professional network.`,
+      `Hi ${selectedUser.name || selectedUser.username}, I'm building my network of ${selectedUser.title || 'professionals'} and would like to connect.`
+    ];
+    
+    setConnectionMessage(suggestedMessages[Math.floor(Math.random() * suggestedMessages.length)]);
+  };
+
+  // Handle sending connection request
+  const handleSendConnectionRequest = () => {
+    if (!selectedUser) return;
+    sendConnectionMutation.mutate(selectedUser.id);
+  };
+
+  return (
+    <Layout>
+      <div className="p-4 pb-16 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6">My Network</h1>
+        
+        {/* Use custom tabs instead of shadcn Tabs to fix the styling issue */}
+        <div className="w-full">
+          <div className="border-b pb-1 mb-6">
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveTab("connections")}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "connections" 
+                    ? "bg-[#8a3ffc] text-white" 
+                    : "bg-transparent text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                My Connections
+              </button>
+              <button 
+                onClick={() => setActiveTab("pending")}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "pending" 
+                    ? "bg-[#8a3ffc] text-white" 
+                    : "bg-transparent text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                Pending Requests
+              </button>
+              <button 
+                onClick={() => setActiveTab("discover")}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "discover" 
+                    ? "bg-[#8a3ffc] text-white" 
+                    : "bg-transparent text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                Discover People
+              </button>
+            </div>
+          </div>
+          
+          {/* My Connections Tab */}
+          <TabsContent value="connections">
+            <div className="mb-6">
+              <h3 className="text-md font-medium mb-3">Your professional network</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Connect with professionals to grow your network and discover new opportunities
+              </p>
+              
+              <div className="flex flex-wrap gap-2 mb-4">
+                <Button 
+                  variant={sortBy === "recent" ? "default" : "outline"} 
+                  size="sm" 
+                  className="rounded-full"
+                  onClick={() => setSortBy("recent")}
+                >
+                  Sort by Recent
+                </Button>
+                <Button 
+                  variant={sortBy === "name" ? "default" : "outline"} 
+                  size="sm" 
+                  className="rounded-full"
+                  onClick={() => setSortBy("name")}
+                >
+                  Sort by Name
+                </Button>
+                <Button 
+                  variant={filterCategory ? "default" : "ghost"} 
+                  size="sm" 
+                  className="flex items-center gap-1"
+                  onClick={() => setFilterDialogOpen(true)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  {filterCategory ? `Filter: ${filterCategory}` : "Filter"}
+                </Button>
+              </div>
+            </div>
+            
+            {loadingConnections ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="h-12 w-12 rounded-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-[150px]" />
+                          <Skeleton className="h-4 w-[100px]" />
+                          <Skeleton className="h-8 w-24 mt-2 rounded-full" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : connections?.length ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {getSortedAndFilteredConnections().map((conn) => (
+                  <Card key={conn.connection.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start space-x-4">
+                        <Avatar
+                          className="cursor-pointer"
+                          onClick={() => setLocation(`/profile/${conn.user.id}`)}
+                        >
+                          <AvatarImage 
+                            src={conn.user.profileImageUrl || undefined} 
+                            alt={conn.user.name || conn.user.username} 
+                          />
+                          <AvatarFallback>
+                            {getInitials(conn.user.name, conn.user.username)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 
+                            className="font-medium cursor-pointer hover:text-purple-700"
+                            onClick={() => setLocation(`/profile/${conn.user.id}`)}
+                          >{conn.user.name || conn.user.username}</h3>
+                          <p className="text-sm text-gray-500">{conn.user.title || 'Professional'}</p>
+                          
+                          <div className="mt-2">
+                            <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700 mr-1">
+                              {conn.user.title?.includes('Engineer') ? 'Engineering' : 
+                               conn.user.title?.includes('Manager') ? 'Management' : 
+                               conn.user.title?.includes('Design') ? 'Design' : 'Professional'}
+                            </span>
+                          </div>
+                          
+                          <p className="text-sm mt-2 text-gray-600">
+                            Connected since {new Date(conn.connection.createdAt).toLocaleDateString()}
+                          </p>
+                          
+                          <div className="flex gap-2 mt-3">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="rounded-full"
+                              onClick={() => setLocation(`/messages?userId=${conn.user.id}`)}
+                            >
+                              <Mail className="mr-1 h-4 w-4" />
+                              Message
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="rounded-full"
+                              onClick={() => setLocation(`/profile/${conn.user.id}`)}
+                            >
+                              <UserPlus className="mr-1 h-4 w-4" />
+                              View Profile
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="py-16">
+                <h3 className="text-lg font-medium mb-2">No connections yet</h3>
+                <p className="text-gray-500 mb-6">Start connecting with professionals on Harmony.ai</p>
+                <Button 
+                  className="bg-purple-600 hover:bg-purple-700 rounded-full px-6 py-2 text-white font-medium text-sm" 
+                  onClick={() => setActiveTab("discover")}
+                >
+                  Discover People
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Pending Requests Tab */}
+          <TabsContent value="pending">
+            <div className="mb-6">
+              <h3 className="text-md font-medium mb-3">Connection requests</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Review and respond to professionals who want to connect with you
+              </p>
+              
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-purple-600 font-medium">
+                  {pendingConnections?.length || 0} pending connection requests
+                </span>
+                
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="rounded-full">
+                    Sort by Date
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            {loadingPending ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className={cn(cardStyle, "border border-gray-100")}>
+                    <CardContent className="p-5">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="h-12 w-12 rounded-full" />
+                        <div className="space-y-2 flex-1">
+                          <Skeleton className="h-4 w-[150px]" />
+                          <Skeleton className="h-4 w-[100px]" />
+                          <div className="flex gap-2 mt-3">
+                            <Skeleton className="h-8 w-20 rounded-full" />
+                            <Skeleton className="h-8 w-20 rounded-full" />
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : pendingConnections?.length ? (
+              <div className="space-y-4 max-w-4xl">
+                {pendingConnections.map((conn) => (
+                  <Card key={conn.connection.id} className={cn(cardStyle, "border border-gray-100 hover:border-purple-200")}>
+                    <CardContent className="p-5">
+                      <div className="flex items-start space-x-4">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage 
+                            src={conn.user.profileImageUrl || undefined} 
+                            alt={conn.user.name || conn.user.username} 
+                          />
+                          <AvatarFallback>
+                            {getInitials(conn.user.name, conn.user.username)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-medium text-gray-900">{conn.user.name || conn.user.username}</h3>
+                              <p className="text-sm text-gray-500">{conn.user.title || 'Professional'}</p>
+                              
+                              <div className="mt-2">
+                                <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700 mr-1">
+                                  {getUserCategory(conn.user)}
+                                </span>
+                              </div>
+                              
+                              <p className="text-sm mt-2 text-gray-600">
+                                Requested to connect {new Date(conn.connection.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            
+                            <div className="flex space-x-2">
+                              <Button 
+                                size="sm" 
+                                variant="default" 
+                                className="bg-green-600 hover:bg-green-700 rounded-full"
+                                onClick={() => acceptConnectionMutation.mutate(conn.connection.id)}
+                              >
+                                <Check className="mr-1 h-4 w-4" />
+                                Accept
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="border-red-300 text-red-600 hover:bg-red-50 rounded-full"
+                                onClick={() => rejectConnectionMutation.mutate(conn.connection.id)}
+                              >
+                                <X className="mr-1 h-4 w-4" />
+                                Decline
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <div className="max-w-md mx-auto bg-gray-50 p-8 rounded-lg border border-gray-100">
+                  <h3 className="text-lg font-medium mb-2">No pending requests</h3>
+                  <p className="text-gray-500 mb-2">When someone sends you a connection request, it will appear here</p>
+                  <div className="mt-6 bg-white p-4 rounded-lg border border-gray-100 text-left">
+                    <div className="text-sm text-gray-600 font-medium mb-1">Connection request example:</div>
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
+                      <div>
+                        <div className="font-medium text-gray-800">Jane Smith</div>
+                        <div className="text-xs text-gray-500">Product Manager</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="default" 
+                        className="bg-green-600 hover:bg-green-700 rounded-full opacity-50 pointer-events-none"
+                        disabled
+                      >
+                        <Check className="mr-1 h-4 w-4" />
+                        Accept
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-red-300 text-red-600 hover:bg-red-50 rounded-full opacity-50 pointer-events-none"
+                        disabled
+                      >
+                        <X className="mr-1 h-4 w-4" />
+                        Decline
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Discover People Tab */}
+          <TabsContent value="discover">
+            <div className="mb-6">
+              <h3 className="text-md font-medium mb-3">Find professionals to connect with</h3>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <Input
+                  placeholder="Search professionals by name or role..."
+                  className="pl-10 bg-white border-gray-200 rounded-full shadow-sm"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex flex-wrap gap-2 mb-4">
+                <Button variant="outline" size="sm" className="rounded-full">
+                  All Professionals
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  Data Science
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  Software Engineering
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  Marketing
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  Product Management
+                </Button>
+              </div>
+
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-sm text-gray-500">{filteredUsers?.length || 0} professionals found</span>
+                <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  Filter
+                </Button>
+              </div>
+            </div>
+            
+            {loadingUsers ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <Card key={i}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="h-12 w-12 rounded-full" />
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-[150px]" />
+                          <Skeleton className="h-4 w-[100px]" />
+                          <Skeleton className="h-8 w-24 mt-2 rounded-full" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : filteredUsers?.length ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredUsers.map((user) => (
+                  <Card key={user.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start space-x-4">
+                        <Avatar>
+                          <AvatarImage 
+                            src={user.profileImageUrl || undefined} 
+                            alt={user.name || user.username} 
+                          />
+                          <AvatarFallback>
+                            {getInitials(user.name, user.username)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-medium">{user.name || user.username}</h3>
+                          <p className="text-sm text-gray-500">{user.title || 'Professional'}</p>
+                          
+                          <div className="mt-2">
+                            <span className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700 mr-1">
+                              {user.title?.includes('Engineer') ? 'Engineering' : 
+                               user.title?.includes('Manager') ? 'Management' : 
+                               user.title?.includes('Design') ? 'Design' : 'Professional'}
+                            </span>
+                            
+                            {user.skills && user.skills.length > 0 && (
+                              <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ml-1">
+                                {user.skills[0]}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-3 rounded-full border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800" 
+                            onClick={() => openConnectionDialog(user)}
+                          >
+                            <UserPlus className="mr-1 h-4 w-4" />
+                            Connect
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="py-16">
+                <h3 className="text-lg font-medium mb-2">No results found</h3>
+                <p className="text-gray-500">Try adjusting your search terms</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+      
+      {/* Connection Request Dialog */}
+      <Dialog open={connectionRequestDialogOpen} onOpenChange={setConnectionRequestDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Connect with {selectedUser?.name || selectedUser?.username}</DialogTitle>
+            <DialogDescription>
+              Send a connection request to {selectedUser?.name || selectedUser?.username}. Adding a personalized message increases the chance of acceptance.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex items-center space-x-4 mb-4">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={selectedUser?.profileImageUrl || undefined} alt={selectedUser?.name} />
+              <AvatarFallback>{selectedUser?.name?.substring(0, 2) || selectedUser?.username?.substring(0, 2)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <h3 className="font-medium">{selectedUser?.name || selectedUser?.username}</h3>
+              <p className="text-sm text-gray-500">{selectedUser?.title || 'Professional'}</p>
+            </div>
+          </div>
+          
+          <Textarea
+            placeholder="Add a note to your connection request..."
+            value={connectionMessage}
+            onChange={(e) => setConnectionMessage(e.target.value)}
+            className="min-h-[100px]"
+          />
+          
+          <DialogFooter className="sm:justify-end gap-2 mt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setConnectionRequestDialogOpen(false)}
+              className="rounded-full"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendConnectionRequest}
+              className="bg-purple-600 hover:bg-purple-700 rounded-full"
+              disabled={sendConnectionMutation.isPending}
+            >
+              Send Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Filter Dialog */}
+      <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Filter by Professional Category</DialogTitle>
+            <DialogDescription>
+              Select a professional category to filter your connections.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 gap-2 py-4">
+            <Button 
+              variant={filterCategory === null ? "default" : "outline"}
+              className="justify-start"
+              onClick={() => {
+                setFilterCategory(null);
+                setFilterDialogOpen(false);
+              }}
+            >
+              All Categories
+            </Button>
+            
+            {professionalCategories.map(category => (
+              <Button
+                key={category}
+                variant={filterCategory === category ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => {
+                  setFilterCategory(category);
+                  setFilterDialogOpen(false);
+                }}
+              >
+                {category}
+              </Button>
+            ))}
+          </div>
+          
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setFilterDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Layout>
+  );
+}

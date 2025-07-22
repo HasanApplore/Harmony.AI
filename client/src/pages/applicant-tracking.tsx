@@ -1,0 +1,623 @@
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import Layout from "@/components/layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { 
+  BarChart, 
+  Calendar, 
+  CheckCircle, 
+  Filter, 
+  MessageCircle, 
+  Search, 
+  SlidersHorizontal, 
+  UserPlus,
+  XCircle,
+  ArrowUpDown,
+  Eye,
+  Star,
+  Video
+} from "lucide-react";
+
+// Application status types and colors
+const STATUS_VARIANTS = {
+  applied: { bg: "bg-blue-100", text: "text-blue-800", label: "Applied" },
+  reviewing: { bg: "bg-yellow-100", text: "text-yellow-800", label: "Reviewing" },
+  shortlisted: { bg: "bg-purple-100", text: "text-purple-800", label: "Shortlisted" },
+  interview: { bg: "bg-indigo-100", text: "text-indigo-800", label: "Interview" },
+  offer: { bg: "bg-green-100", text: "text-green-800", label: "Offer" },
+  hired: { bg: "bg-emerald-100", text: "text-emerald-800", label: "Hired" },
+  rejected: { bg: "bg-red-100", text: "text-red-800", label: "Rejected" }
+};
+
+export default function ApplicantTracking() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<string>("dateDesc");
+  
+  useEffect(() => {
+    // Initialize with the data for a better user experience
+    if (!applications) {
+      setActiveTab("all");
+    }
+  }, []);
+
+  // Fetch applicants data
+  const { data: applications, isLoading } = useQuery({
+    queryKey: ["/api/recruiter/applications"],
+    queryFn: () => {
+      // Real application data structure
+      return [
+        {
+          id: 1,
+          jobId: 1,
+          candidateId: 3,
+          status: "shortlisted",
+          appliedDate: "2025-05-01T09:51:15.873Z",
+          updatedDate: "2025-05-05T09:51:15.873Z",
+          notes: "Strong technical skills, good communication",
+          job: {
+            id: 1,
+            title: "Senior Business Analyst",
+            company: "TechSolutions India",
+            location: "Bengaluru, Karnataka",
+          },
+          candidate: {
+            id: 3,
+            name: "Priya Sharma",
+            profileImageUrl: "https://randomuser.me/api/portraits/women/79.jpg",
+            title: "Senior UX Designer",
+            skills: ["User Research", "UX Design", "Figma", "Prototyping", "User Testing"],
+            matchScore: 92,
+            hasVideo: true
+          }
+        },
+        {
+          id: 2,
+          jobId: 2,
+          candidateId: 4,
+          status: "interview",
+          appliedDate: "2025-05-03T09:51:15.873Z",
+          updatedDate: "2025-05-06T09:51:15.873Z",
+          notes: "Excellent fit for backend role",
+          interviewDate: "2025-05-19T14:30:00Z",
+          job: {
+            id: 2,
+            title: "Product Manager",
+            company: "TechSolutions India",
+            location: "Delhi, Remote",
+          },
+          candidate: {
+            id: 4,
+            name: "Arjun Patel",
+            profileImageUrl: "https://randomuser.me/api/portraits/men/32.jpg",
+            title: "Full Stack Developer",
+            skills: ["React", "Node.js", "TypeScript", "MongoDB", "Docker"],
+            matchScore: 89,
+            hasVideo: true
+          }
+        },
+        {
+          id: 3,
+          jobId: 3,
+          candidateId: 5,
+          status: "applied",
+          appliedDate: "2025-05-12T09:51:15.873Z",
+          updatedDate: "2025-05-12T09:51:15.873Z",
+          notes: "",
+          job: {
+            id: 3,
+            title: "Data Scientist",
+            company: "TechSolutions India",
+            location: "Mumbai, Hybrid",
+          },
+          candidate: {
+            id: 5,
+            name: "Divya Reddy",
+            profileImageUrl: "https://randomuser.me/api/portraits/women/44.jpg",
+            title: "Data Scientist",
+            skills: ["Python", "ML", "Data Analysis", "TensorFlow", "Statistical Analysis"],
+            matchScore: 85,
+            hasVideo: false
+          }
+        },
+        {
+          id: 4,
+          jobId: 3,
+          candidateId: 6,
+          status: "reviewing",
+          appliedDate: "2025-05-10T09:51:15.873Z",
+          updatedDate: "2025-05-13T09:51:15.873Z",
+          notes: "Strong Python skills, reviewing profile",
+          job: {
+            id: 3,
+            title: "Data Scientist",
+            company: "TechSolutions India",
+            location: "Mumbai, Hybrid",
+          },
+          candidate: {
+            id: 6,
+            name: "Rajesh Kumar",
+            profileImageUrl: "https://randomuser.me/api/portraits/men/11.jpg",
+            title: "ML Engineer",
+            skills: ["Python", "TensorFlow", "PyTorch", "Data Mining", "NLP"],
+            matchScore: 78,
+            hasVideo: true
+          }
+        },
+        {
+          id: 5,
+          jobId: 4,
+          candidateId: 7,
+          status: "rejected",
+          appliedDate: "2025-05-06T09:51:15.873Z",
+          updatedDate: "2025-05-14T09:51:15.873Z",
+          notes: "Not enough design experience",
+          job: {
+            id: 4,
+            title: "UX Designer",
+            company: "TechSolutions India",
+            location: "Remote",
+          },
+          candidate: {
+            id: 7,
+            name: "Ananya Singh",
+            profileImageUrl: "https://randomuser.me/api/portraits/women/67.jpg",
+            title: "Junior Designer",
+            skills: ["UI Design", "Figma", "Adobe XD", "Wireframing"],
+            matchScore: 62,
+            hasVideo: false
+          }
+        }
+      ];
+    }
+  });
+  
+  // Fetch jobs data
+  const { data: jobs } = useQuery({
+    queryKey: ["/api/recruiter/jobs"],
+    queryFn: () => {
+      // For demo purposes, using mock data
+      return [
+        {
+          id: 1,
+          title: "Senior Business Analyst",
+          company: user?.company || "TechSolutions India",
+          location: "Bengaluru, Karnataka",
+          applicantCount: 32,
+          shortlistedCount: 8,
+          status: "active",
+          postedDate: "2025-05-01T09:51:15.873Z",
+        },
+        {
+          id: 2,
+          title: "Product Manager",
+          company: user?.company || "TechSolutions India",
+          location: "Delhi, Remote",
+          applicantCount: 47,
+          shortlistedCount: 5,
+          status: "active",
+          postedDate: "2025-05-05T09:51:15.873Z",
+        },
+        {
+          id: 3,
+          title: "Data Scientist",
+          company: user?.company || "TechSolutions India",
+          location: "Mumbai, Hybrid",
+          applicantCount: 24,
+          shortlistedCount: 3,
+          status: "active",
+          postedDate: "2025-05-07T09:51:15.873Z",
+        },
+        {
+          id: 4,
+          title: "UX Designer",
+          company: user?.company || "TechSolutions India",
+          location: "Remote",
+          applicantCount: 19,
+          shortlistedCount: 2,
+          status: "active",
+          postedDate: "2025-05-10T09:51:15.873Z",
+        }
+      ];
+    }
+  });
+  
+  // Apply filters and sorting to applications
+  const filteredApplications = applications?.filter(app => {
+    // Filter by status
+    if (activeTab !== 'all' && app.status !== activeTab) {
+      return false;
+    }
+    
+    // Filter by additional status filter
+    if (filterStatus && app.status !== filterStatus) {
+      return false;
+    }
+    
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      return (
+        app.candidate.name.toLowerCase().includes(query) ||
+        app.job.title.toLowerCase().includes(query) ||
+        app.candidate.title.toLowerCase().includes(query) ||
+        app.candidate.skills.some(skill => skill.toLowerCase().includes(query))
+      );
+    }
+    
+    return true;
+  }).sort((a, b) => {
+    // Apply sorting
+    switch(sortBy) {
+      case 'nameAsc':
+        return a.candidate.name.localeCompare(b.candidate.name);
+      case 'nameDesc':
+        return b.candidate.name.localeCompare(a.candidate.name);
+      case 'scoreDesc':
+        return b.candidate.matchScore - a.candidate.matchScore;
+      case 'scoreAsc':
+        return a.candidate.matchScore - b.candidate.matchScore;
+      case 'dateDesc':
+        return new Date(b.appliedDate).getTime() - new Date(a.appliedDate).getTime();
+      case 'dateAsc':
+        return new Date(a.appliedDate).getTime() - new Date(b.appliedDate).getTime();
+      default:
+        return new Date(b.appliedDate).getTime() - new Date(a.appliedDate).getTime();
+    }
+  });
+  
+  // Handle viewing candidate profile
+  const viewCandidate = (candidateId: number) => {
+    navigate(`/candidate/${candidateId}`);
+  };
+  
+  // Get counts for each status
+  const getStatusCounts = () => {
+    if (!applications) return {};
+    
+    return applications.reduce((counts, app) => {
+      counts[app.status] = (counts[app.status] || 0) + 1;
+      return counts;
+    }, { all: applications.length } as Record<string, number>);
+  };
+  
+  const statusCounts = getStatusCounts();
+  
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="max-w-6xl mx-auto p-4">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-semibold text-gray-900">Applicant Tracking</h1>
+          </div>
+          <div className="grid grid-cols-1 gap-6">
+            <Card>
+              <CardContent className="p-6">
+                <div className="h-10 bg-gray-200 rounded animate-pulse mb-4"></div>
+                <div className="space-y-6">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="h-28 bg-gray-200 rounded animate-pulse"></div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="max-w-6xl mx-auto p-4">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Applicant Tracking</h1>
+            <p className="text-gray-600">Manage and track all job applications</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate("/talent-pool")}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Talent Pool
+            </Button>
+            <Button onClick={() => navigate("/create-job-posting")}>
+              Post New Job
+            </Button>
+          </div>
+        </div>
+        
+        {/* Overview Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {["all", "applied", "reviewing", "shortlisted", "interview"].map((status) => (
+            <Card 
+              key={status}
+              className={`cursor-pointer ${activeTab === status ? 'border-primary' : ''}`}
+              onClick={() => setActiveTab(status)}
+            >
+              <CardContent className="pt-6 pb-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      {status === "all" ? "All Applicants" : STATUS_VARIANTS[status as keyof typeof STATUS_VARIANTS].label}
+                    </p>
+                    <h3 className="text-2xl font-bold mt-1">{statusCounts[status] || 0}</h3>
+                  </div>
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                    status === "all" 
+                      ? "bg-gray-100" 
+                      : `${STATUS_VARIANTS[status as keyof typeof STATUS_VARIANTS].bg}`
+                  }`}>
+                    {status === "all" ? (
+                      <UserPlus className="h-5 w-5 text-gray-600" />
+                    ) : status === "shortlisted" ? (
+                      <CheckCircle className="h-5 w-5 text-purple-600" />
+                    ) : status === "applied" ? (
+                      <UserPlus className="h-5 w-5 text-blue-600" />
+                    ) : status === "reviewing" ? (
+                      <Eye className="h-5 w-5 text-yellow-600" />
+                    ) : status === "interview" ? (
+                      <Calendar className="h-5 w-5 text-indigo-600" />
+                    ) : null}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        
+        {/* Filter and Search Tools */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-500" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search applicants by name, job title, or skills..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex gap-2">
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-[180px]">
+                    <div className="flex items-center">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <span>Sort by</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dateDesc">Date (newest first)</SelectItem>
+                    <SelectItem value="dateAsc">Date (oldest first)</SelectItem>
+                    <SelectItem value="nameAsc">Name (A-Z)</SelectItem>
+                    <SelectItem value="nameDesc">Name (Z-A)</SelectItem>
+                    <SelectItem value="scoreDesc">Match score (highest)</SelectItem>
+                    <SelectItem value="scoreAsc">Match score (lowest)</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Select 
+                  value={filterStatus || ""} 
+                  onValueChange={(value) => setFilterStatus(value || null)}
+                >
+                  <SelectTrigger className="w-[160px]">
+                    <div className="flex items-center">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <span>Filter status</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="applied">Applied</SelectItem>
+                    <SelectItem value="reviewing">Reviewing</SelectItem>
+                    <SelectItem value="shortlisted">Shortlisted</SelectItem>
+                    <SelectItem value="interview">Interview</SelectItem>
+                    <SelectItem value="offer">Offer</SelectItem>
+                    <SelectItem value="hired">Hired</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Button variant="outline" size="icon" className="h-10 w-10">
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Job filter tabs (optional enhancement) */}
+        <div className="mb-6 overflow-x-auto">
+          <div className="flex space-x-2 pb-2">
+            <Button variant="outline" className="whitespace-nowrap">
+              All Jobs
+            </Button>
+            {jobs?.map(job => (
+              <Button 
+                key={job.id} 
+                variant="outline" 
+                className="whitespace-nowrap"
+              >
+                {job.title} ({job.applicantCount})
+              </Button>
+            ))}
+          </div>
+        </div>
+        
+        {/* Applicants list */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">
+              {activeTab === 'all' ? 'All Applicants' : STATUS_VARIANTS[activeTab as keyof typeof STATUS_VARIANTS].label}
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                {filteredApplications?.length} {filteredApplications?.length === 1 ? 'applicant' : 'applicants'}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {filteredApplications?.length === 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <UserPlus className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-lg font-medium mb-1">No applicants found</p>
+                  <p>Try adjusting your filters or search query</p>
+                </div>
+              )}
+              
+              {filteredApplications?.map((app) => (
+                <Card key={app.id} className="overflow-hidden border shadow-sm">
+                  <CardContent className="p-0">
+                    <div className="grid grid-cols-1 md:grid-cols-6 divide-y md:divide-y-0 md:divide-x">
+                      <div className="p-4 md:col-span-2">
+                        <div className="flex items-start gap-3">
+                          <div className="relative">
+                            <Avatar className="h-12 w-12 border">
+                              <AvatarImage 
+                                src={app.candidate.profileImageUrl} 
+                                alt={app.candidate.name} 
+                              />
+                              <AvatarFallback className="bg-purple-100 text-purple-700">
+                                {app.candidate.name.split(' ').map(name => name[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            {app.candidate.hasVideo && (
+                              <div className="absolute -bottom-1 -right-1 bg-purple-600 rounded-full h-5 w-5 flex items-center justify-center">
+                                <Video className="w-3 h-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="font-medium">{app.candidate.name}</h3>
+                            <p className="text-gray-600 text-sm">{app.candidate.title}</p>
+                            
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {app.candidate.skills.slice(0, 3).map((skill, index) => (
+                                <span key={index} className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
+                                  {skill}
+                                </span>
+                              ))}
+                              {app.candidate.skills.length > 3 && (
+                                <span className="text-xs text-gray-500">
+                                  +{app.candidate.skills.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 md:col-span-2">
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Applied for</p>
+                          <p className="text-sm">{app.job.title}</p>
+                          <p className="text-xs text-gray-600">{app.job.location}</p>
+                        </div>
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700">Applied on</p>
+                          <p className="text-sm">{new Date(app.appliedDate).toLocaleDateString("en-US", { 
+                            day: "numeric", 
+                            month: "short",
+                            year: "numeric"
+                          })}</p>
+                        </div>
+                        {app.interviewDate && (
+                          <div className="mt-2 flex items-center text-sm text-purple-600">
+                            <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                            Interview: {new Date(app.interviewDate).toLocaleDateString("en-US", { 
+                              day: "numeric", 
+                              month: "short"
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="p-4 md:col-span-1">
+                        <div className="flex justify-between items-start">
+                          <Badge 
+                            className={`${STATUS_VARIANTS[app.status as keyof typeof STATUS_VARIANTS].bg} ${STATUS_VARIANTS[app.status as keyof typeof STATUS_VARIANTS].text} px-2 py-1 rounded-full`}
+                          >
+                            {STATUS_VARIANTS[app.status as keyof typeof STATUS_VARIANTS].label}
+                          </Badge>
+                          
+                          <div className="flex items-center">
+                            <div className="bg-purple-100 text-purple-700 rounded-full px-2 py-0.5 text-xs font-medium flex items-center">
+                              <span>{app.candidate.matchScore}%</span>
+                              <Star className="h-3 w-3 ml-1 fill-purple-600 text-purple-600" />
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <Select defaultValue={app.status} onValueChange={(value) => {
+                          toast({
+                            title: "Status updated",
+                            description: `Candidate status changed to ${STATUS_VARIANTS[value as keyof typeof STATUS_VARIANTS].label}`,
+                          });
+                        }}>
+                          <SelectTrigger className="w-full h-9 text-sm">
+                            <SelectValue placeholder="Update status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="applied">Applied</SelectItem>
+                            <SelectItem value="reviewing">Reviewing</SelectItem>
+                            <SelectItem value="shortlisted">Shortlisted</SelectItem>
+                            <SelectItem value="interview">Interview</SelectItem>
+                            <SelectItem value="offer">Offer</SelectItem>
+                            <SelectItem value="hired">Hired</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="p-4 md:col-span-1">
+                        <div className="flex flex-col gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="w-full text-purple-600 border-purple-200 hover:bg-purple-50 hover:text-purple-700"
+                            onClick={() => viewCandidate(app.candidate.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Profile
+                          </Button>
+                          
+                          <Button 
+                            variant="outline"
+                            size="sm" 
+                            className="w-full text-gray-700 border-gray-200"
+                          >
+                            <MessageCircle className="h-4 w-4 mr-2" />
+                            Message
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Layout>
+  );
+}

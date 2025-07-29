@@ -43,7 +43,7 @@ export async function analyzeVideoResume(videoPath: string): Promise<VideoAnalys
     }`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o", 
       messages: [
         {
           role: "system",

@@ -1407,6 +1407,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/connections/sent-pending", async (req, res, next) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    try {
+      const connections = await storage.getSentPendingConnections(req.user.id);
+      res.json(connections);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Message routes
   app.post("/api/messages", async (req, res, next) => {
     if (!req.isAuthenticated()) {

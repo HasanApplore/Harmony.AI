@@ -117,26 +117,44 @@ export function setupAuth(app: Express) {
   app.post("/api/login", (req, res, next) => {
     console.log("Login attempt:", req.body.username);
     
-    passport.authenticate("local", (err: Error | null, user: SelectUser | false, info: any) => {
-      if (err) {
-        console.error("Authentication error:", err);
-        return next(err);
-      }
-      if (!user) {
-        console.error("Authentication failed: Invalid username or password");
-        return res.status(401).json({ message: "Invalid username or password" });
-      }
-      
-      console.log("User authenticated successfully:", user.id);
-      req.login(user, (err: Error | null) => {
+    // Wrap the authentication in a try-catch to handle database connection errors
+    try {
+      passport.authenticate("local", (err: Error | null, user: SelectUser | false, info: any) => {
+        // Handle database connection errors
         if (err) {
-          console.error("Session login error:", err);
+          console.error("Authentication error:", err);
+          // Check if it's a database connection error
+          if (err.message && (err.message.includes('database') || err.message.includes('connection'))) {
+            return res.status(500).json({ 
+              message: "Error connecting to database", 
+              error: "Database connection failed. Please try again later."
+            });
+          }
           return next(err);
         }
-        console.log("User logged in, session established");
-        return res.status(200).json(user);
+        
+        if (!user) {
+          console.error("Authentication failed: Invalid username or password");
+          return res.status(401).json({ message: "Invalid username or password" });
+        }
+        
+        console.log("User authenticated successfully:", user.id);
+        req.login(user, (err: Error | null) => {
+          if (err) {
+            console.error("Session login error:", err);
+            return next(err);
+          }
+          console.log("User logged in, session established");
+          return res.status(200).json(user);
+        });
+      })(req, res, next);
+    } catch (error) {
+      console.error("Unexpected error during login:", error);
+      return res.status(500).json({ 
+        message: "An unexpected error occurred", 
+        error: "Please try again later or contact support if the problem persists."
       });
-    })(req, res, next);
+    }
   });
 
   app.post("/api/logout", (req, res, next) => {

@@ -103,6 +103,14 @@ Harmony AI is a modern, AI-powered professional networking platform that combine
    npm run db:push
    ```
 
+   If you encounter database connection issues, you can run the database connection checker:
+   ```bash
+   # Check database connection
+   npm run db:check
+   ```
+   
+   This will diagnose common database connection problems and provide suggestions for fixing them.
+
 5. **Start Development Server**
    ```bash
    npm run dev
@@ -297,4 +305,4 @@ For support, email support@harmony-ai.com or create an issue in this repository.
 
 ---
 
-**Built with ❤️ for the professional community** 
+**Built with ❤️ for the professional community**

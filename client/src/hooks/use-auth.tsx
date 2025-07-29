@@ -39,8 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await res.json();
         console.log("Login response:", userData);
         return userData;
-      } catch (error) {
+      } catch (error: any) {
         console.error("Login error in mutation function:", error);
+        // Check if it's a database connection error
+        if (error.message?.includes('database')) {
+          throw new Error('Database connection error: ' + error.message);
+        }
+        // Handle network errors
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+          throw new Error('Network error: Unable to connect to the server');
+        }
         throw error;
       }
     },
@@ -54,11 +62,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     onError: (error: Error) => {
       console.error("Login mutation error callback:", error);
-      toast({
-        title: "Login failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      // Customize toast based on error type
+      if (error.message.includes('database')) {
+        toast({
+          variant: "destructive",
+          title: "Database Connection Error",
+          description: "We're having trouble connecting to our database. Please try again later.",
+        });
+      } else {
+        toast({
+          title: "Login failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     },
   });
 

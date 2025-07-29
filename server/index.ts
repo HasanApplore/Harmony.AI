@@ -42,10 +42,31 @@ app.use((req, res, next) => {
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    let message = err.message || "Internal Server Error";
+    let errorDetails = undefined;
 
-    res.status(status).json({ message });
-    throw err;
+    // Log the full error for debugging
+    console.error('Server error:', err);
+    
+    // Handle database connection errors specifically
+    if (err.message && (err.message.includes('database') || err.message.includes('connection'))) {
+      message = "Database connection error";
+      errorDetails = "There was a problem connecting to the database. Please try again later.";
+      
+      // Log additional information for database errors
+      console.error('Database connection error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+    }
+
+    // Send a more user-friendly response
+    res.status(status).json({ 
+      message, 
+      error: errorDetails,
+      success: false
+    });
   });
 
   // importantly only setup vite in development and after

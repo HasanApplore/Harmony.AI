@@ -16,13 +16,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import {
-  Search,
   UserPlus,
-  MessageSquare,
-  UserCircle,
+  Search,
+  MapPin,
+  Briefcase,
+  Calendar,
   Filter,
   Check,
-  X
+  X,
+  Clock,
+  MessageSquare,
+  UserCircle
 } from "lucide-react";
 import { User } from "@shared/schema";
 
@@ -77,14 +81,35 @@ export default function NetworkPage() {
     enabled: !!user
   });
 
+  // Fetch sent connection requests
+  const { data: sentPendingConnections, isLoading: loadingSentPending } = useQuery<Connection[]>({
+    queryKey: ["/api/connections/sent-pending"],
+    enabled: !!user
+  });
+
   // Fetch users for suggestions
   const { data: allUsers, isLoading: loadingUsers } = useQuery<User[]>({
     queryKey: ["/api/users"],
     enabled: !!user
   });
 
-
-
+  // Helper function to get connection status between current user and another user
+  const getConnectionStatus = (targetUserId: number): 'connected' | 'pending-sent' | 'pending-received' | 'none' => {
+    // Check if already connected
+    const isConnected = connections?.some(conn => conn.user.id === targetUserId);
+    if (isConnected) return 'connected';
+    
+    // Check if current user sent a pending request to target user
+    const hasSentRequest = sentPendingConnections?.some(conn => conn.user.id === targetUserId);
+    if (hasSentRequest) return 'pending-sent';
+    
+    // Check if target user sent a pending request to current user
+    const hasReceivedRequest = pendingConnections?.some(conn => conn.user.id === targetUserId);
+    if (hasReceivedRequest) return 'pending-received';
+    
+    return 'none';
+  };
+  
   // Send connection request mutation
   const sendConnectionMutation = useMutation({
     mutationFn: async (receiverId: number) => {
@@ -96,6 +121,7 @@ export default function NetworkPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/sent-pending"] });
       toast({
         title: "Connection request sent",
         description: "Your connection request has been sent successfully."
@@ -121,6 +147,7 @@ export default function NetworkPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/sent-pending"] });
       toast({
         title: "Connection accepted",
         description: "You are now connected with this user."
@@ -143,6 +170,7 @@ export default function NetworkPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/connections"] });
       queryClient.invalidateQueries({ queryKey: ["/api/connections/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/connections/sent-pending"] });
       toast({
         title: "Connection request ignored",
         description: "The connection request has been removed."
@@ -251,6 +279,77 @@ export default function NetworkPage() {
     sendConnectionMutation.mutate(selectedUser.id);
   };
 
+  // Render connection status button
+  const renderConnectionButton = (discoveryUser: User) => {
+    const status = getConnectionStatus(discoveryUser.id);
+    switch (status) {
+      case 'connected':
+        return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            disabled
+          >
+            <Check className="h-4 w-4 mr-2" />
+            Connected
+          </Button>
+        );
+      case 'pending-sent':
+        return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            disabled
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            Request Sent
+          </Button>
+        );
+      case 'pending-received':
+        return (
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              className="flex-1 bg-[#8a3ffc] hover:bg-[#7a2ff2]"
+              onClick={() => {
+                const connection = pendingConnections?.find(conn => conn.user.id === discoveryUser.id);
+                if (connection) acceptConnectionMutation.mutate(connection.connection.id);
+              }}
+            >
+              <Check className="h-4 w-4 mr-1" />
+              Accept
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex-1"
+              onClick={() => {
+                const connection = pendingConnections?.find(conn => conn.user.id === discoveryUser.id);
+                if (connection) rejectConnectionMutation.mutate(connection.connection.id);
+              }}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Ignore
+            </Button>
+          </div>
+        );
+      default:
+        return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full"
+            onClick={() => openConnectionDialog(discoveryUser)}
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Connect
+          </Button>
+        );
+    }
+  };
+
   // Card styling
   const cardStyle = "border-0 shadow-sm hover:shadow";
 
@@ -281,6 +380,16 @@ export default function NetworkPage() {
               }`}
             >
               Pending Requests {pendingConnections?.length ? `(${pendingConnections.length})` : ''}
+            </button>
+            <button 
+              onClick={() => setActiveTab("sent")}
+              className={`rounded-full px-6 py-2 text-sm font-medium transition-colors ${
+                activeTab === "sent" 
+                  ? "bg-[#8a3ffc] text-white" 
+                  : "bg-transparent text-gray-700"
+              }`}
+            >
+              Sent Requests {sentPendingConnections?.length ? `(${sentPendingConnections.length})` : ''}
             </button>
             <button 
               onClick={() => setActiveTab("discover")}
@@ -638,6 +747,134 @@ export default function NetworkPage() {
           </div>
         )}
         
+        {/* Sent Requests Tab Content */}
+        {activeTab === "sent" && (
+          <div>
+            <div className="mb-6">
+              <h3 className="text-md font-medium mb-3">Sent connection requests</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                View the connection requests you have sent to other professionals
+              </p>
+              
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-purple-600 font-medium">
+                  {sentPendingConnections?.length || 0} sent connection requests
+                </span>
+                
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="rounded-full"
+                    onClick={() => {
+                      // Create a copy and sort by date (newest first)
+                      const sortedSentPendingConnections = [...(sentPendingConnections || [])];
+                      sortedSentPendingConnections.sort((a, b) => {
+                        return new Date(b.connection.createdAt).getTime() - new Date(a.connection.createdAt).getTime();
+                      });
+                      
+                      toast({
+                        title: "Sent requests sorted",
+                        description: "Sent requests sorted by most recent date"
+                      });
+                    }}
+                  >
+                    Sort by Date
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            {loadingSentPending ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className={cn(cardStyle, "border border-gray-100")}>
+                    <CardContent className="p-5">
+                      <div className="flex items-center space-x-4">
+                        <Skeleton className="h-12 w-12 rounded-full" />
+                        <div className="space-y-2 flex-1">
+                          <Skeleton className="h-4 w-[150px]" />
+                          <Skeleton className="h-4 w-[100px]" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : sentPendingConnections && sentPendingConnections.length > 0 ? (
+              // Display real sent requests if available
+              <div className="space-y-4">
+                {sentPendingConnections.map((connection) => (
+                  <Card key={connection.connection.id} className={cn(cardStyle, "border border-gray-100")}>
+                    <CardContent className="p-5">
+                      <div className="flex items-center mb-4">
+                        <div 
+                          className="flex items-center flex-1 cursor-pointer"
+                          onClick={() => navigate(`/profile/${connection.user.id}`)}
+                        >
+                          <Avatar className="h-12 w-12 mr-3">
+                            <AvatarImage 
+                              src={connection.user.profileImageUrl || undefined} 
+                              alt={connection.user.name || ''} 
+                            />
+                            <AvatarFallback>{connection.user.name?.charAt(0) || "U"}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="font-medium">{connection.user.name}</h3>
+                            <p className="text-sm text-gray-600">
+                              {connection.user.title || "No title"}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Sent {formatDate(connection.connection.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="hidden md:flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => rejectConnectionMutation.mutate(connection.connection.id)}
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            Ignore
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {connection.connection.message && (
+                        <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-md">
+                          "{connection.connection.message}"
+                        </div>
+                      )}
+                      
+                      <div className="md:hidden flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          size="sm"
+                          onClick={() => rejectConnectionMutation.mutate(connection.connection.id)}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Ignore
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="bg-gray-100 rounded-full p-4 w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                  <MessageSquare size={24} className="text-gray-400" />
+                </div>
+                <h3 className="text-lg font-medium mb-2">No sent requests</h3>
+                <p className="text-gray-500">You haven't sent any connection requests yet.</p>
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* Discover People Tab Content */}
         {activeTab === "discover" && (
           <div>
@@ -677,22 +914,10 @@ export default function NetworkPage() {
               </div>
             ) : allUsers && allUsers.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {allUsers
+                {(allUsers || [])
                   .filter(discoveryUser => {
                     // Filter out current user
                     if (discoveryUser.id === user?.id) return false;
-                    
-                    // Filter out already connected users
-                    const isConnected = connections?.some(conn => 
-                      conn.user.id === discoveryUser.id
-                    );
-                    if (isConnected) return false;
-                    
-                    // Filter out pending connection requests
-                    const hasPendingRequest = pendingConnections?.some(conn => 
-                      conn.user.id === discoveryUser.id
-                    );
-                    if (hasPendingRequest) return false;
                     
                     // Apply search filter
                     if (searchTerm) {
@@ -725,15 +950,7 @@ export default function NetworkPage() {
                             </p>
                           </div>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full"
-                          onClick={() => openConnectionDialog(discoveryUser)}
-                        >
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Connect
-                        </Button>
+                        {renderConnectionButton(discoveryUser)}
                       </CardContent>
                     </Card>
                   ))}

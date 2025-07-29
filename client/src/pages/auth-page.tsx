@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import HarmonyLogo from "@/components/harmony-logo";
 import { Loader2, ShieldAlert, Eye, EyeOff, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DatabaseError } from "@/components/ui/database-error";
 
 // Country data with phone codes and validation patterns
 const countries = [
@@ -91,6 +92,7 @@ export default function AuthPage() {
   const [showForgotPasswordForm, setShowForgotPasswordForm] = useState(false);
   const [isSubmittingForgotPassword, setIsSubmittingForgotPassword] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [databaseError, setDatabaseError] = useState<string>("");
   const { user, loginMutation, registerMutation } = useAuth();
   const [, navigate] = useLocation();
 
@@ -140,6 +142,9 @@ export default function AuthPage() {
   const onLoginSubmit = (data: LoginFormValues) => {
     console.log("Login form submitted with:", data.username);
     
+    // Clear any previous database errors
+    setDatabaseError("");
+    
     // Check if this is an admin login (admin/admin123)
     if (data.username === "admin" && data.password === "admin123") {
       // Store admin session
@@ -163,14 +168,27 @@ export default function AuthPage() {
               window.location.href = "/";
             }
           },
-          onError: (error) => {
+          onError: (error: any) => {
             console.error("Login error callback:", error);
+            
+            // Check if it's a database connection error
+            if (error.response?.data?.error?.includes('database') || 
+                error.response?.data?.message?.includes('database') || 
+                error.message?.includes('database')) {
+              setDatabaseError("We're having trouble connecting to our database. Please try again later.");
+            }
           }
         });
       } catch (error) {
         console.error("Exception during login form submission:", error);
       }
     }
+  };
+  
+  // Function to retry login after database error
+  const handleRetryAfterDatabaseError = () => {
+    setDatabaseError("");
+    loginForm.handleSubmit(onLoginSubmit)();
   };
 
   const onRegisterSubmit = (data: RegisterFormValues) => {
@@ -515,6 +533,13 @@ export default function AuthPage() {
 
                 {/* Login Form */}
                 <TabsContent value="login" className="transition-all duration-300 ease-in-out data-[state=active]:animate-in data-[state=active]:fade-in-0 data-[state=active]:slide-in-from-right-1 data-[state=inactive]:animate-out data-[state=inactive]:fade-out-0 data-[state=inactive]:slide-out-to-left-1">
+                  {/* Display database connection error if present */}
+                  {databaseError && (
+                    <DatabaseError 
+                      message={databaseError}
+                      onRetry={handleRetryAfterDatabaseError}
+                    />
+                  )}
                   <Form {...loginForm}>
                     <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-3 sm:space-y-4">
                       <FormField

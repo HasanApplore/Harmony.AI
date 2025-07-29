@@ -83,6 +83,7 @@ export interface IStorage {
   updateConnectionStatus(id: number, status: string): Promise<Connection | undefined>;
   getUserConnections(userId: number): Promise<{connection: Connection, user: User}[]>;
   getPendingConnections(userId: number): Promise<{connection: Connection, user: User}[]>;
+  getSentPendingConnections(userId: number): Promise<{connection: Connection, user: User}[]>;
   
   // Message operations
   createMessage(message: InsertMessage): Promise<Message>;
@@ -605,6 +606,25 @@ export class MemStorage implements IStorage {
     const result = [];
     for (const connection of connections) {
       const user = await this.getUser(connection.requesterId);
+      if (user) {
+        result.push({ connection, user });
+      }
+    }
+    
+    return result;
+  }
+
+  async getSentPendingConnections(userId: number): Promise<{connection: Connection, user: User}[]> {
+    const sentPendingConnections = Array.from(this.connections.values())
+      .filter((conn) => 
+        conn.requesterId === userId && 
+        conn.status === "pending"
+      );
+    
+    const result = [];
+    
+    for (const connection of sentPendingConnections) {
+      const user = await this.getUser(connection.receiverId);
       if (user) {
         result.push({ connection, user });
       }
@@ -1337,6 +1357,33 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(users)
         .where(eq(users.id, connection.requesterId));
+      
+      if (user) {
+        result.push({ connection, user });
+      }
+    }
+    
+    return result;
+  }
+
+  async getSentPendingConnections(userId: number): Promise<{connection: Connection, user: User}[]> {
+    const sentPendingConnections = await db
+      .select()
+      .from(connections)
+      .where(
+        and(
+          eq(connections.requesterId, userId),
+          eq(connections.status, "pending")
+        )
+      );
+    
+    const result = [];
+    
+    for (const connection of sentPendingConnections) {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, connection.receiverId));
       
       if (user) {
         result.push({ connection, user });

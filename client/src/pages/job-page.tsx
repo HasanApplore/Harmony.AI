@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import Layout from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/utils";
 import { 
   Search, 
   Briefcase, 
@@ -26,6 +30,9 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Textarea } from "@/components/ui/textarea";
 
 // Define job type interface
 interface Job {
@@ -42,6 +49,21 @@ interface Job {
   experienceLevel: string;
 }
 
+// Form schema for job creation
+const jobFormSchema = z.object({
+  title: z.string().min(1, "Job title is required"),
+  company: z.string().min(1, "Company name is required"),
+  location: z.string().min(1, "Location is required"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  skills: z.string().min(1, "Skills are required"),
+  salary: z.string().optional(),
+  jobType: z.string().min(1, "Job type is required"),
+  experienceLevel: z.string().min(1, "Experience level is required"),
+  userId: z.number(),
+});
+
+type JobFormValues = z.infer<typeof jobFormSchema>;
+
 export default function JobPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -54,6 +76,7 @@ export default function JobPage() {
   const [activeTab, setActiveTab] = useState("browse");
   const [showFilters, setShowFilters] = useState(true);
   const [showAIRecommendations, setShowAIRecommendations] = useState(true);
+  const [createJobModalOpen, setCreateJobModalOpen] = useState(false);
   
   // Fetch jobs
   const { data: allJobs = [], isLoading } = useQuery<Job[]>({
@@ -61,7 +84,7 @@ export default function JobPage() {
   });
   
   // Demo saved and applied jobs
-  const savedJobs = allJobs.slice(0, 1);
+  const demoSavedJobs = allJobs.slice(0, 1);
   const appliedJobs = allJobs.slice(1, 2);
   
   // Generate match percentage based on job skills and user skills
@@ -111,7 +134,6 @@ export default function JobPage() {
       </div>
     );
   };
-  });
 
   // Form for creating a new job
   const form = useForm<JobFormValues>({
@@ -166,49 +188,7 @@ export default function JobPage() {
     createJobMutation.mutate(data);
   };
 
-  // Filter jobs based on search term and filters
-  const filteredJobs = jobs?.filter(job => {
-    const matchesSearch = !searchTerm || 
-      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesLocation = !locationFilter || 
-      job.location.toLowerCase().includes(locationFilter.toLowerCase());
-    
-    const matchesExperience = !experienceFilter || 
-      job.experienceLevel?.toLowerCase().includes(experienceFilter.toLowerCase());
-      
-    // In this context, jobTypeFilter is used for the tab selection (all/saved/applied)
-    // and not for filtering the job type field
-    
-    return matchesSearch && matchesLocation && matchesExperience;
-  });
 
-  // Generate match percentage based on job skills and user
-  const getMatchPercentage = (job: any) => {
-    if (!job) return 60; // Default match percentage
-    return job.id === 1 ? 60 : job.id === 2 ? 76 : 85 - (job.id * 5);
-  };
-
-  // Format skills as tags
-  const renderSkillTags = (skills: string[]) => {
-    if (!skills || !Array.isArray(skills)) return null;
-    
-    return (
-      <div className="flex flex-wrap gap-1 mt-2">
-        {skills.map((skill, index) => (
-          <Badge 
-            key={index} 
-            variant="outline" 
-            className="bg-purple-50 text-purple-700 border-purple-100 hover:bg-purple-100"
-          >
-            {skill}
-          </Badge>
-        ))}
-      </div>
-    );
-  };
 
   // Fetch saved jobs - for demo, just use an empty array
   const { data: savedJobs = [] } = useQuery<any[]>({
